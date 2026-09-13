@@ -1,2 +1,26 @@
-#converts raw MPU6050 data into pitch/roll angles
-#will buold this 
+import math
+
+def accel_pitch(ax, ay, az):
+    """
+    Works out pitch (nose up/down) from accelerometer data.
+    """
+    # Compare gravity on X against gravity on Y+Z combined
+    angle_radians = math.atan2(-ax, math.sqrt(ay**2 + az**2))
+
+    # Convert to degrees, easier to read
+    angle_degrees = math.degrees(angle_radians)
+
+    return angle_degrees
+
+
+def accel_roll(ax, ay, az):
+    """
+    Works out roll (tilt left/right) from accelerometer data.
+    """
+    # Compare gravity on Y against gravity on Z
+    angle_radians = math.atan2(ay, az)
+
+    # Convert to degrees, easier to read
+    angle_degrees = math.degrees(angle_radians)
+
+    return angle_degrees
