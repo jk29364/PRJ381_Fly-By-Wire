@@ -8,7 +8,7 @@ aircraft's pitch and roll, and displays it as a live instrument panel.
 
 - attitude_filter.py — Converts raw MPU6050 accelerometer and 
   gyroscope data into stable pitch/roll angles using a complementary 
-  filter. Written by Alexander Solomon.
+  filter. Written by Tshiamo Maise.
 - arduino_receiver.py — Provides mock sensor data (ax, ay, az, gx, 
   gy, gz) for testing without real hardware connected. Written by 
   Reabetswe Matake.
