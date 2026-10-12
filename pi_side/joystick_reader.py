@@ -17,10 +17,10 @@ if joystick_count == 0:
 joystick = pygame.joystick.Joystick(0)
 joystick.init()
 
-print(f"✅ Successfully connected to: {joystick.get_name()}")
-print(f"📊 Number of Axes: {joystick.get_numaxes()}")
-print(f"🔴 Number of Buttons: {joystick.get_numbuttons()}")
-print(f"🕹️ Number of Hats (D-pads): {joystick.get_numhats()}")
+print(f" Successfully connected to: {joystick.get_name()}")
+print(f"Number of Axes: {joystick.get_numaxes()}")
+print(f"Number of Buttons: {joystick.get_numbuttons()}")
+print(f" Number of Hats (D-pads): {joystick.get_numhats()}")
 print("-" * 50)
 print("Listening for raw inputs... Press Ctrl+C to exit.\n")
 
