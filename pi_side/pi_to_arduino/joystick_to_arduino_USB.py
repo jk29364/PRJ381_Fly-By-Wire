@@ -2,14 +2,13 @@ import serial
 import pygame
 import time
 
-# This file should detect one axis of the joystick and send it to a servo connected to pin 8
-# Might serve as a skeleton for bluetooth connection mode
-
+# This file maps joystick axes directly to 0-180 servo angles and sends them as raw bytes
 # Created by Johni with help from Gemini
 
-# Change "COM6" to match the path to the arduino's USb port (e.g., '/dev/ttyUSB0' on Linux/Mac)
-ARDUINO_PORT = "COM6" 
+# Change "COM8" to match the path to your Arduino's USB port. On the pi it will be tty something or other
+ARDUINO_PORT = "COM8" 
 BAUD_RATE = 115200
+SERVO_COUNT = 6  # Must match the SERVO_COUNT variable on Arduino sketch
 
 try:
     ser = serial.Serial(ARDUINO_PORT, BAUD_RATE, timeout=0.1)
@@ -28,11 +27,19 @@ if pygame.joystick.get_count() == 0:
     exit()
 
 joystick = pygame.joystick.Joystick(0)
-joystick.init()
 print(f"Tracking: {joystick.get_name()}")
 
 running = True
 clock = pygame.time.Clock()
+
+def calculate_angle(axis_val):
+    # Maps a -1.0 -> 1.0 float to a 45 -> 135 integer, clamped safely.
+    # Formula: min_angle + ((axis_val + 1.0) / 2.0) * (max_angle - min_angle)
+    # The total span is 90 degrees (135 - 45)
+    angle = int(45 + ((axis_val + 1.0) / 2.0) * 90.0)
+    
+    # Clamp tightly to the new boundaries to protect physical linkages
+    return max(45, min(135, angle))
 
 while running:
     # Pygame requires checking events to update internal states
@@ -40,30 +47,42 @@ while running:
         if event.type == pygame.QUIT:
             running = False
             
-    # Axes: 
-    # 0 is tilt left/right
-    # 1 is forward/back
-    # 2 is rotate left/right
-    # 3 is slider
-    # Pygame returns a float from -1.0 to 1.0
-    axis_val = joystick.get_axis(3) 
+    # Read raw joystick axis floats (-1.0 to 1.0)
+    axis_roll_val     = joystick.get_axis(0)
+    axis_pitch_val    = joystick.get_axis(1)
+    axis_yaw_val      = joystick.get_axis(2)
+    axis_throttle_val = joystick.get_axis(3) # Will artificially control airspeed gauge if implemented.
     
-    # Map -1.0 -> 1.0 to a 0 -> 180 degree integer scale
-    servo_angle = int((axis_val + 1.0) * 90)
+    # 1. Map joystick ranges to final 0-180 degree angles right here in Python
+    yaw_angle   = calculate_angle(axis_yaw_val) # Tail left/right
+    rollL_angle  = calculate_angle(axis_roll_val) # Left wing up/down
+    rollR_angle   = calculate_angle(-axis_roll_val) # Right wing up/down
+    pitch_angle = calculate_angle(axis_pitch_val) # Tail up/down
+    aileronL_angle = 90 # Left wing aileron up/down
+    aileronR_angle = 90 # Right wing aileron up/down 
+    # REMEMBER TO ADD BUTTON CONTROLS FOR AILERONS (if they're getting implemented, which they should)
     
-    # Ensure it stays within bounds
-    servo_angle = max(0, min(180, servo_angle))
+    # This packages the angles into a single array. The 255 acts as a shield to soak up buffer startup latency
+    servo_angles = [
+        255,            # <-- DUMMY SYNC BYTE
+        yaw_angle, 
+        rollL_angle, 
+        rollR_angle, 
+        pitch_angle, 
+        aileronL_angle, 
+        aileronR_angle
+    ]
     
-    # Send as a single byte over serial with a newline delimiter
-    # Adding string encoding prevents raw byte interpretation issues on the Arduino
-    payload = f"{servo_angle}\n"
-    ser.write(payload.encode('utf-8'))
+    # Pack the integers directly into raw bytes
+    payload = bytes(servo_angles)
+    ser.write(payload)
     
-    # Print locally for debugging
-    print(f"Joystick: {axis_val:.2f} -> Sent Angle: {servo_angle}", end="\r")
+    # Print locally for debugging (displays the final computed angles going to the hardware)
+    print(f"Sending Angles -> Yaw: {yaw_angle}° | RollL: {rollL_angle}° | RollR: {rollR_angle}° | Pitch: {pitch_angle}° | AilL: {aileronL_angle}° | AilR: {aileronR_angle}°", end="   \r")
     
-    # Limit to 30 packets per second to prevent overloading the serial buffer
+    # Limit to 30 packets per second to keep everything real-time and responsive
     clock.tick(30) 
 
 ser.close()
 pygame.quit()
+print("\nDisconnected successfully.")
