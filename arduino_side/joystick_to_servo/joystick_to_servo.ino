@@ -1,37 +1,49 @@
 #include <Servo.h>
 
-// Created by Johni with help from Gemini
-
-Servo servo8;
-const int servoPin = 8;
+const int SERVO_COUNT = 6; 
+Servo servos[SERVO_COUNT];
+const int servoPins[SERVO_COUNT] = {2, 3, 4, 5, 6, 7}; 
 
 void setup() {
-  Serial.begin(115200);      // Must match the Python script baud rate
-  servo8.attach(servoPin);  // Attach servo to pin 9
-  servo8.write(90);         // Start at the center position
-}
-
-void loop() {
-  // Check if serial data is waiting
-  if (Serial.available() > 0) {
-    // Read the incoming string until it hits a newline character
-    String inputString = Serial.readStringUntil('\n');
-    
-    // Convert the string to an integer
-    int angle = inputString.toInt();
-    
-    // Constrain the angle strictly for servo safety
-    angle = constraint(angle, 0, 180);
-    
-    // Move the servo
-    servo8.write(angle);
+  Serial.begin(115200);
+  
+  for (int i = 0; i < SERVO_COUNT; i++) {
+    servos[i].attach(servoPins[i]);
+    servos[i].write(90); 
   }
 }
 
-// Quick helper to enforce bounds
+void loop() {
+  // Check if there is data in the buffer
+  if (Serial.available() > 0) {
+    
+    // Peek at the first byte in line without removing it yet
+    if (Serial.peek() == 255) {
+      
+      // Wait until the dummy byte + all servo bytes are fully ready
+      if (Serial.available() >= (SERVO_COUNT + 1)) {
+        
+        Serial.read(); // Read and DISCARD the 255 dummy byte (soaking up the latency)
+        
+        byte angles[SERVO_COUNT];
+        // Instantly read the actual clean servo angles that follow
+        Serial.readBytes((char*)angles, SERVO_COUNT);
+        
+        for (int i = 0; i < SERVO_COUNT; i++) {
+          int cleanAngle = constraint(angles[i], 0, 180);
+          servos[i].write(cleanAngle);
+        }
+      }
+    } else {
+      // If the buffer gets misaligned and doesn't start with 255, 
+      // dump the bad byte to find the next clean packet header
+      Serial.read(); 
+    }
+  }
+}
+
 int constraint(int val, int minVal, int maxVal) {
   if (val < minVal) return minVal;
   if (val > maxVal) return maxVal;
   return val;
 }
-
