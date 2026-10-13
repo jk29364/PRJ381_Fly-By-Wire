@@ -4,12 +4,12 @@ Arduino Uno sketches and wiring for the fly-by-wire prototype (5 servos, MPU6050
 
 ## ⚠️ Disconnect D0 and D1 before uploading
 
-The HC-05 Bluetooth module is wired to **D0 (RX)** and **D1 (TX)**. These are the same pins the Uno uses to talk to the computer over USB, so an attached HC-06 blocks the upload.
+The HC-06 Bluetooth module is wired to **D0 (RX)** and **D1 (TX)**. These are the same pins the Uno uses to talk to the computer over USB, so an attached HC-06 blocks the upload.
 
 **Before you click Upload in the Arduino IDE:**
 
 1. Unplug the jumper wire on **D0** (HC-06 TXD).
-2. Unplug the jumper wire on **D1** (to the HC-05 RXD resistor divider).
+2. Unplug the jumper wire on **D1** (to the HC-06 RXD resistor divider).
 3. Upload the sketch and wait for **"Done uploading"**.
 4. Plug **D0** and **D1** back in.
 5. Press the **reset button** on the Uno so the sketch restarts with the HC-05 connected.
