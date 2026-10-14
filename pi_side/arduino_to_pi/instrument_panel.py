@@ -1,22 +1,11 @@
 import pygame
 import math
 import sys
-import time
 
-# Sample data, only used when instrument_panel.py is run on its own.
-# When instrument_main.py runs, it replaces pitch and roll with the filtered
-# values and adds the raw sensor numbers under "raw".
+# Placeholder values. instrument_main.py fills in the real pitch, roll and raw data.
 class FlightDataStream:
-    def __init__(self):
-        self.start_time = time.time()
-
     def get_telemetry(self):
-        t = time.time() - self.start_time
-        return {
-            "pitch": math.sin(t * 0.8) * 18.0,
-            "roll": math.sin(t * 0.5) * 25.0,
-            "raw": None
-        }
+        return {"pitch": 0.0, "roll": 0.0, "raw": None}
 
 WINDOW_W, WINDOW_H = 1000, 620
 FPS = 60
