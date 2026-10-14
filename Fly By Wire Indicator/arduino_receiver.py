@@ -2,10 +2,14 @@
 arduino_receiver.py
 --------------------
 Separate module that connects to the Arduino (serial / USB / Bluetooth)
-and exposes the latest gyroscopic / attitude data through simple variables.
+and exposes the latest raw gyroscopic / accelerometer data through simple
+variables.
 
 Designed for Raspberry Pi 5. The module auto-discovers common serial ports.
 Synthetic data is available only when explicitly enabled for development.
+
+Note: this module does NOT filter attitude. Pitch and roll are derived by
+attitude_filter.py in the display from the raw ax/ay/az/gx/gy/gz values.
 
 Public API
 ----------
@@ -43,7 +47,8 @@ _running = False
 _reader_thread: Optional[threading.Thread] = None
 _ser = None
 
-# Latest sensor / attitude values (degrees for pitch/roll)
+# Latest sensor values. pitch/roll are kept for API compatibility but are
+# not computed by this module.
 _data = {
     "ax": 0.0,
     "ay": 0.0,
@@ -51,8 +56,8 @@ _data = {
     "gx": 0.0,
     "gy": 0.0,
     "gz": 0.0,
-    "pitch": 0.0,      # degrees
-    "roll": 0.0,       # degrees
+    "pitch": 0.0,      # degrees (only set if the Arduino sends P:/R: itself)
+    "roll": 0.0,       # degrees (only set if the Arduino sends P:/R: itself)
     "airspeed": None,
     "altitude": None,
     "heading": None,
@@ -71,46 +76,22 @@ _data = {
     "receiver_error": None,
 }
 
-# Complementary-filter state
-_cf_pitch = 0.0
-_cf_roll = 0.0
-_last_t = time.time()
-_alpha = 0.96          # gyro weight (higher = trust gyro more)
-
 # ---------------------------------------------------------------------------
-# Attitude estimation from MPU-6050 style data
+# Raw sensor storage (no attitude filtering)
 # ---------------------------------------------------------------------------
-def _update_attitude(ax: float, ay: float, az: float,
-                     gx: float, gy: float, gz: float) -> None:
-    """Complementary filter → pitch & roll in degrees."""
-    global _cf_pitch, _cf_roll, _last_t
-
-    now = time.time()
-    dt = max(0.001, min(0.1, now - _last_t))
-    _last_t = now
-
-    # Accel-only angles (degrees)
-    # Convention: pitch positive nose-up, roll positive right-wing-down
-    accel_pitch = math.degrees(math.atan2(ay, math.sqrt(ax * ax + az * az)))
-    accel_roll  = math.degrees(math.atan2(-ax, az))
-
-    # Integrate gyro (assuming gx/gy are in deg/s)
-    _cf_pitch = _alpha * (_cf_pitch + gy * dt) + (1.0 - _alpha) * accel_pitch
-    _cf_roll  = _alpha * (_cf_roll  + gx * dt) + (1.0 - _alpha) * accel_roll
-
+def _store_raw_sensors(ax: float, ay: float, az: float,
+                       gx: float, gy: float, gz: float) -> None:
+    """Store raw accelerometer / gyro values unfiltered and unmapped."""
     with _lock:
-        _data["pitch"] = _cf_pitch
-        _data["roll"]  = _cf_roll
-        _data["attitude_available"] = True
         _data["ax"] = ax
         _data["ay"] = ay
         _data["az"] = az
         _data["gx"] = gx
         _data["gy"] = gy
         _data["gz"] = gz
-        # Turn rate roughly follows yaw-rate gyro (gz)
-        _data["turn_rate"] = gz / 30.0          # scale to ~2-min-turn units
-        _data["ball"] = max(-1.0, min(1.0, ax * 2.0))  # lateral accel → slip
+        # Non-filter derived values the display may still rely on
+        _data["turn_rate"] = gz / 30.0                 # scale to ~2-min-turn units
+        _data["ball"] = max(-1.0, min(1.0, ax * 2.0))  # lateral accel -> slip
 
 # ---------------------------------------------------------------------------
 # Serial line parser – accepts several common formats
@@ -147,7 +128,7 @@ def _parse_line(line: str) -> None:
     if len(parts) >= 6:
         try:
             vals = [float(p) for p in parts[:6]]
-            _update_attitude(*vals)
+            _store_raw_sensors(*vals)
             # optional extra telemetry after the six sensor values
             if len(parts) >= 7:
                 try:
@@ -193,7 +174,7 @@ def _parse_line(line: str) -> None:
     sensor_tokens = ("AX", "AY", "AZ", "GX", "GY", "GZ",
                      "ACCX", "ACCY", "ACCZ", "GYROX", "GYROY", "GYROZ")
     if any(k in tokens for k in sensor_tokens):
-        _update_attitude(ax, ay, az, gx, gy, gz)
+        _store_raw_sensors(ax, ay, az, gx, gy, gz)
 
     with _lock:
         _data["last_update"] = time.time()
@@ -267,7 +248,7 @@ def _mock_loop() -> None:
         gx = math.sin(t * 0.6) * 12.0
         gy = math.cos(t * 0.4) * 10.0
         gz = math.sin(t * 0.3) * 5.0
-        _update_attitude(ax, ay, az, gx, gy, gz)
+        _store_raw_sensors(ax, ay, az, gx, gy, gz)
         with _lock:
             _data["airspeed"] = 110.0 + math.sin(t * 0.35) * 25.0
             _data["altitude"] = 2500.0 + math.sin(t * 0.2) * 400.0
@@ -345,8 +326,9 @@ def stop_receiver() -> None:
 
 def get_latest_data() -> dict:
     """
-    Return a snapshot of the most recent sensor / attitude values.
-    All angles are in degrees.  Safe to call from the main UI thread.
+    Return a snapshot of the most recent sensor values.
+    Raw accelerometer / gyro values are unfiltered. Safe to call from the
+    main UI thread.
     """
     with _lock:
         snapshot = dict(_data)
