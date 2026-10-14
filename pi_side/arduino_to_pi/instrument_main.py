@@ -16,6 +16,7 @@ def real_get_telemetry(self):
                                   raw["gx"], raw["gy"], raw["gz"])
     data["pitch"] = pitch
     data["roll"] = roll
+    data["raw"] = raw
     return data
 
 instrument_panel.FlightDataStream.get_telemetry = real_get_telemetry
