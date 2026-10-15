@@ -1,13 +1,12 @@
 import serial
 import threading
 import time
-from multiprocessing.managers import BaseManager
 import config
+import pygame # Added to poll joystick safely inside the synchronous flow
 
 _serial_port = None
 _running = False
 _read_thread = None
-_manager_server = None
 
 _latest_telemetry = {
     "ax": 0.0, "ay": 0.0, "az": 1.0,
@@ -16,20 +15,19 @@ _latest_telemetry = {
 }
 _lock = threading.Lock()
 
-# Proxy class so the external joystick file can send data down our open serial port
-class SerialProxy:
-    def write(self, data):
-        global _serial_port
-        if _serial_port and _serial_port.is_open:
-            _serial_port.write(data)
-
-# Register the proxy class early so the manager factory knows how to route instances
-BaseManager.register('get_serial', callable=SerialProxy)
+def calculate_angle(axis_val):
+    angle = int(45 + ((axis_val + 1.0) / 2.0) * 90.0)
+    return max(45, min(135, angle))
 
 def _read_loop():
     global _running, _serial_port, _latest_telemetry
     try:
         _serial_port.reset_input_buffer()
+        _serial_port.reset_output_buffer()
+        
+        # Kick off the alternating ping-pong flow by sending an initial dummy packet
+        init_packet = [0x5A, 0xA5, 90, 90, 90, 90, 90, 90]
+        _serial_port.write(bytes(init_packet))
     except:
         pass
 
@@ -49,6 +47,28 @@ def _read_loop():
                             _latest_telemetry["gy"] = float(parts[4])
                             _latest_telemetry["gz"] = float(parts[5])
                             _latest_telemetry["stream_active"] = True
+                    
+                    # TELEMETRY READ SUCCESSFUL -> IMMEDIATELY SEND INTERCEPTED JOYSTICK RESPONSE
+                    pygame.event.pump()
+                    if pygame.joystick.get_count() > 0:
+                        js = pygame.joystick.Joystick(0)
+                        yaw_angle   = calculate_angle(js.get_axis(0)) 
+                        rollL_angle  = calculate_angle(js.get_axis(1)) 
+                        rollR_angle   = calculate_angle(-js.get_axis(1)) 
+                        pitch_angle = calculate_angle(js.get_axis(2)) 
+                    else:
+                        yaw_angle = rollL_angle = rollR_angle = pitch_angle = 90
+                        
+                    servo_angles = [
+                        0x5A, 0xA5, # Safe 2-Byte Structural Alignment Headers
+                        yaw_angle, 
+                        rollL_angle, 
+                        rollR_angle, 
+                        pitch_angle, 
+                        90, 90 # Structural auxiliary slots
+                    ]
+                    _serial_port.write(bytes(servo_angles))
+                    
         except:
             with _lock:
                 _latest_telemetry["stream_active"] = False
@@ -56,8 +76,8 @@ def _read_loop():
         time.sleep(0.001)
 
 def start_receiver(port=None, baudrate=None):
-    """OPENS THE HARDWARE PORT AND STARTS THE IPC SERVER"""
-    global _serial_port, _running, _read_thread, _manager_server
+    """Opens the hardware serial port cleanly without any network servers."""
+    global _serial_port, _running, _read_thread
     if _running:
         return
 
@@ -66,32 +86,23 @@ def start_receiver(port=None, baudrate=None):
 
     print(f"Connecting to hardware on {active_port} at {active_baud} baud...")
     try:
-        # HERE IS THE ONLY SERIAL CONNECTION IN THE ENTIRE PROJECT
         _serial_port = serial.Serial(active_port, active_baud, timeout=0.5)
         time.sleep(2) 
         
         _running = True
         _read_thread = threading.Thread(target=_read_loop, daemon=True)
         _read_thread.start()
-        print("Hardware tracking thread started.")
-
-        # Start the internal network server so the joystick file can connect to us
-        _manager_server = BaseManager(address=('127.0.0.1', 50000), authkey=b'fbw_secret')
-        _manager_server.start()
-        print("Shared Serial IPC Server active on local port 50000.")
-
+        print("Hardware tracking thread started successfully.")
     except Exception as e:
         print(f"CRITICAL: Connection failed: {e}")
         with _lock:
             _latest_telemetry["stream_active"] = False
 
 def stop_receiver():
-    global _running, _serial_port, _read_thread, _manager_server
+    global _running, _serial_port, _read_thread
     _running = False
     if _read_thread:
         _read_thread.join(timeout=1.0)
-    if _manager_server:
-        _manager_server.shutdown()
     if _serial_port and _serial_port.is_open:
         _serial_port.close()
         print("Serial port connection closed cleanly.")
