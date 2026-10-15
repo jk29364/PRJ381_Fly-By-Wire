@@ -1,8 +1,8 @@
 import subprocess
 import sys
 
-a2p = subprocess.Popen([sys.executable, "./pi_side/arduino_to_pi/instrument_main.py"])
-p2a = subprocess.Popen([sys.executable, "./pi_side/pi_to_arduino/joystick_to_arduino_USB.py"])
+a2p = subprocess.Popen([sys.executable, "./pi_side/arduino_to_pi/run_instrument_panel.py"])
+p2a = subprocess.Popen([sys.executable, "./pi_side/pi_to_arduino/joystick_to_arduino.py"])
 
 print("Both files are running! Press Ctrl+C to stop.")
 
