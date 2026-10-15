@@ -14,7 +14,7 @@ unsigned long lastTelemetryTime = 0;
 const unsigned long telemetryInterval = 33; 
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   
   // Initialize Servos
   for (int i = 0; i < SERVO_COUNT; i++) {
