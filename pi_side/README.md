@@ -1,48 +1,40 @@
-# Attitude Display
+# Pi side (ground station)
 
-This folder contains the software attitude indicator for the 
-Fly-By-Wire project. It takes raw sensor data, calculates the 
-aircraft's pitch and roll, and displays it as a live instrument panel.
+Run **`main.py`**. It opens a connection status screen, then (0.5 s after the Arduino link is up) the attitude
+display. The joystick drives the 7 servos through the Arduino.
 
 ## Files
 
-- attitude_filter.py — Converts raw MPU6050 accelerometer and 
-  gyroscope data into stable pitch/roll angles using a complementary 
-  filter. Written by Tshiamo Maise.
-- arduino_receiver.py — Provides mock sensor data (ax, ay, az, gx, 
-  gy, gz) for testing without real hardware connected. Written by 
-  Reabetswe Matake.
-- instrument_panel.py — Draws the six-instrument dashboard (airspeed, 
-  attitude, altimeter, turn coordinator, heading indicator, VSI) using 
-  pygame. Written by Reabetswe Matake.
-- main.py — Connects the three files above: pulls mock sensor data, 
-  runs it through the filter, and feeds the result into the display.
+- `config.py`: **all** serial settings (port, baud rate fixed at 9600, timeouts) plus servo limits (45-135),
+  joystick axis/button numbers and aileron angles.
+- `arduino_receiver.py`: serial link thread. Sends the 7 servo angles, receives raw MPU6050 data.
+- `connection_screen.py`: the status screen shown at start-up.
+- `main.py`: entry point; joystick -> servo angles, telemetry -> attitude filter -> display.
+- `attitude_filter.py`: complementary filter (accelerometer + gyro) by Tshiamo Maise.
+- `instrument_panel.py`: pygame attitude indicator (Reabetswe Matake).
+- `joystick_tester.py`: prints raw axes/buttons, useful for checking the numbers in `config.py`.
+- `instrument_main.py`: old entry point, now just forwards to `main.py`.
 
-## Requirements
+## Controls
 
-- Python 3.x
-- pygame
+| Input | Action |
+|---|---|
+| Axis 0 | Roll: left wing outer (D12) and right wing outer (D9, mirrored) |
+| Axis 1 | Pitch: tail left (D7) and tail right (D6, mirrored) |
+| Axis 2 | Yaw: rudder (D4) |
+| Button 0 | Zero the attitude display (local only, nothing is sent to the Arduino) |
+| Button 2 | Inner wing flaps ON: left and right inner (D11, D8) 90° → 45° |
+| Button 4 | Inner wing flaps OFF: back to 90° |
+| ESC / close window | Quit (servos are centred) |
 
-Install pygame with this command:
+Servo order on the wire (and the Arduino pins D4, D6, D7, D8, D9, D11, D12):
+`RUDDER, TAIL_R, TAIL_L, WING_R_INNER, WING_R_OUTER, WING_L_INNER, WING_L_OUTER`. Every angle is clamped to 45-135.
 
-pip install pygame
+## Setup
 
-## How to run
+Windows: `pip install pygame pyserial`, set `SERIAL_PORT` in `config.py` (e.g. `"COM8"`), then `python main.py`.
 
-1. Open a terminal inside this folder (pi_side/attitude_display)
-2. Install pygame (see above) if not already installed
-3. Run this command:
+Raspberry Pi: `sudo apt install python3-full python3-pygame python3-pyserial`, connect the HC-06
+(`sudo rfcomm connect /dev/rfcomm0 <MAC> 1`), set `SERIAL_PORT = "/dev/rfcomm0"` in `config.py`, then `python main.py`.
 
-python main.py
-
-A window should open showing the instrument panel. The attitude 
-indicator (top-middle gauge) will tilt based on data from the mock 
-sensor receiver.
-
-## Notes
-
-- Currently uses mock sensor data (arduino_receiver.py) instead of 
-  a real MPU6050 connection, for development and testing purposes.
-- The pitch sign may need calibration once real hardware is connected, 
-  as the accelerometer's positive/negative direction depends on 
-  physical sensor orientation.
+If the connection screen shows "CONNECTION FAILED" it retries every few seconds; ESC quits.

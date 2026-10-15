@@ -60,7 +60,7 @@ class AttitudeFilter:
         self.pitch = 0.0
         self.roll = 0.0
         self.alpha = alpha
-        self.last_time = time.time()
+        self.last_time = None          # set by the first update()
 
     def _accel_pitch(self, ax, ay, az):
         return math.degrees(math.atan2(-ax, math.sqrt(ay**2 + az**2)))
@@ -68,17 +68,28 @@ class AttitudeFilter:
     def _accel_roll(self, ax, ay, az):
         return math.degrees(math.atan2(ay, az))
 
-    def update(self, ax, ay, az, gx, gy, gz):
+    def update(self, ax, ay, az, gx, gy, gz, timestamp=None):
         """
-        Call this every frame with fresh sensor data.
+        Call this once per NEW sensor sample (not once per display frame, or the gyro
+        gets integrated several times over).
+        timestamp: when the sample arrived (time.monotonic()); defaults to now.
         Returns (pitch, roll) in degrees.
         """
-        current_time = time.time()
-        dt = current_time - self.last_time
-        self.last_time = current_time
+        current_time = timestamp if timestamp is not None else time.monotonic()
 
         accel_pitch = self._accel_pitch(ax, ay, az)
         accel_roll = self._accel_roll(ax, ay, az)
+
+        if self.last_time is None:
+            # First sample: start from what the accelerometer says instead of from 0,
+            # and don't integrate the gyro over the time since the program started.
+            self.pitch = accel_pitch
+            self.roll = accel_roll
+            self.last_time = current_time
+            return self.pitch, self.roll
+
+        dt = max(0.0, min(current_time - self.last_time, 0.5))
+        self.last_time = current_time
 
         gyro_pitch = self.pitch + (gy * dt)
         gyro_roll = self.roll + (gx * dt)
