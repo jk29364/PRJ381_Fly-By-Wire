@@ -1,22 +1,11 @@
 import pygame
 import math
-import sys
-import time
+from functools import lru_cache
 
-# Sample data, only used when instrument_panel.py is run on its own.
-# When instrument_main.py runs, it replaces pitch and roll with the filtered
-# values and adds the raw sensor numbers under "raw".
+# Placeholder values. instrument_main.py fills in the real pitch, roll and raw data.
 class FlightDataStream:
-    def __init__(self):
-        self.start_time = time.time()
-
     def get_telemetry(self):
-        t = time.time() - self.start_time
-        return {
-            "pitch": math.sin(t * 0.8) * 18.0,
-            "roll": math.sin(t * 0.5) * 25.0,
-            "raw": None
-        }
+        return {"pitch": 0.0, "roll": 0.0, "raw": None}
 
 WINDOW_W, WINDOW_H = 1000, 620
 FPS = 60
@@ -32,6 +21,14 @@ EARTH_BROWN = (108, 62, 28)
 WHITE = (255, 255, 255)
 BLACK = (10, 10, 12)
 YELLOW = (245, 210, 15)
+GREEN = (70, 210, 90)
+RED = (235, 75, 65)
+
+
+@lru_cache(maxsize=None)
+def _font(names, size, bold=True):
+    """SysFont lookups are slow, so each font is created once and reused every frame."""
+    return pygame.font.SysFont(names, size, bold=bold)
 
 
 def draw_screw(surface, x, y, size=11):
@@ -65,7 +62,7 @@ def draw_attitude(surface, cx, cy, r, pitch, roll):
     pygame.draw.rect(horizon, EARTH_BROWN, (0, h_size // 2 + pitch_shift, h_size, h_size))
     pygame.draw.line(horizon, WHITE, (0, h_size // 2 + pitch_shift), (h_size, h_size // 2 + pitch_shift), 3)
 
-    font_p = pygame.font.SysFont("arial", 11, bold=True)
+    font_p = _font("arial", 11)
     for p in range(-80, 85, 5):
         if p == 0: continue
         ly = h_size // 2 + pitch_shift - (p * 3.5)
@@ -113,13 +110,19 @@ def draw_attitude(surface, cx, cy, r, pitch, roll):
     pygame.draw.circle(surface, BEZEL_MID, (cx, cy + r - 8), 12)
 
 def draw_readout(surface, x, y, w, h, data):
-    """Text panel next to the gauge: filtered pitch/roll, then the raw sensor numbers."""
-    title_font = pygame.font.SysFont("arial", 18, bold=True)
-    value_font = pygame.font.SysFont("consolas,couriernew,dejavusansmono", 20, bold=True)
-    small_font = pygame.font.SysFont("arial", 14, bold=True)
+    """Text panel next to the gauge: attitude, raw sensor numbers, servo commands, link state."""
+    title_font = _font("arial", 18)
+    value_font = _font("consolas,couriernew,dejavusansmono", 20)
+    small_font = _font("arial", 14)
 
     pygame.draw.rect(surface, BLACK, (x, y, w, h), border_radius=10)
     pygame.draw.rect(surface, BEZEL_MID, (x, y, w, h), 3, border_radius=10)
+
+    link_ok = data.get("link_ok")
+    if link_ok is not None:
+        label = "LINK OK" if link_ok else "LINK LOST"
+        text = small_font.render(label, True, GREEN if link_ok else RED)
+        surface.blit(text, (x + w - text.get_width() - 18, y + 26))
 
     line_y = y + 22
 
@@ -145,55 +148,76 @@ def draw_readout(surface, x, y, w, h, data):
     raw = data.get("raw")
     if raw is None:
         surface.blit(small_font.render("no raw data yet", True, BEZEL_LIGHT), (x + 22, line_y))
-        return
+        line_y += 24
+    else:
+        row("AX", raw.get("ax"), "g")
+        row("AY", raw.get("ay"), "g")
+        row("AZ", raw.get("az"), "g")
+        row("GX", raw.get("gx"), "deg/s")
+        row("GY", raw.get("gy"), "deg/s")
+        row("GZ", raw.get("gz"), "deg/s")
 
-    row("AX", raw.get("ax"), "g")
-    row("AY", raw.get("ay"), "g")
-    row("AZ", raw.get("az"), "g")
-    row("GX", raw.get("gx"), "deg/s")
-    row("GY", raw.get("gy"), "deg/s")
-    row("GZ", raw.get("gz"), "deg/s")
+    servos = data.get("servos")
+    if servos:
+        line_y += 4
+        heading("SERVO OUTPUT (deg)")
+        labels = ("RUD", "TAIL-R", "TAIL-L", "R-IN", "R-OUT", "L-IN", "L-OUT")
+        cells = [f"{lab} {int(v):3d}" for lab, v in zip(labels, servos)]
+        for chunk in (cells[:3], cells[3:5], cells[5:]):
+            surface.blit(small_font.render("   ".join(chunk), True, WHITE), (x + 22, line_y))
+            line_y += 19
+        aileron = "ACTIVE" if data.get("aileron_on") else "REST"
+        surface.blit(small_font.render(f"INNER FLAPS: {aileron}", True, BEZEL_LIGHT), (x + 22, line_y))
 
-def main():
-    pygame.init()
-    screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
+
+def run(screen, data_stream, on_event=None):
+    """Draw the instrument panel until the window is closed or ESC is pressed.
+
+    data_stream.get_telemetry() must return a dict with "pitch", "roll" and "raw"
+    (optionally "servos", "aileron_on", "link_ok"). on_event(event) is called for every
+    pygame event, so the caller can react to joystick buttons.
+    """
     pygame.display.set_caption("Attitude Indicator")
     clock = pygame.time.Clock()
-
-    data_stream = FlightDataStream()
 
     r = 230                        # gauge radius
     gauge_x, gauge_y = 310, 310    # gauge centre
 
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                return
+            if on_event:
+                on_event(event)
+
+        data = data_stream.get_telemetry()
+
+        screen.fill(PANEL_GREY)
+
+        for x in range(30, WINDOW_W, 120):
+            draw_screw(screen, x, 20)
+            draw_screw(screen, x, WINDOW_H - 20)
+        for y in range(80, WINDOW_H - 80, 110):
+            draw_screw(screen, 20, y)
+            draw_screw(screen, WINDOW_W - 20, y)
+
+        draw_gauge_bezel(screen, gauge_x, gauge_y, r)
+        draw_attitude(screen, gauge_x, gauge_y, r, data["pitch"], data["roll"])
+        draw_readout(screen, 620, 65, 330, 490, data)
+
+        pygame.display.flip()
+        clock.tick(FPS)
+
+
+def main():
+    """Standalone demo with placeholder data (run main.py for the real thing)."""
+    pygame.init()
+    screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
     try:
-        while True:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-                    raise KeyboardInterrupt
-
-            data = data_stream.get_telemetry()
-
-            screen.fill(PANEL_GREY)
-
-            for x in range(30, WINDOW_W, 120):
-                draw_screw(screen, x, 20)
-                draw_screw(screen, x, WINDOW_H - 20)
-            for y in range(80, WINDOW_H - 80, 110):
-                draw_screw(screen, 20, y)
-                draw_screw(screen, WINDOW_W - 20, y)
-
-            draw_gauge_bezel(screen, gauge_x, gauge_y, r)
-            draw_attitude(screen, gauge_x, gauge_y, r, data["pitch"], data["roll"])
-            draw_readout(screen, 620, 65, 330, 490, data)
-
-            pygame.display.flip()
-            clock.tick(FPS)
-
-    except KeyboardInterrupt:
-        print("\nExiting Attitude Indicator...")
+        run(screen, FlightDataStream())
     finally:
         pygame.quit()
-        sys.exit()
+
 
 if __name__ == "__main__":
     main()

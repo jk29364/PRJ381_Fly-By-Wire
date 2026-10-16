@@ -12,7 +12,7 @@ The 3rd year project of Group 6 at Belgium Campus iTversity during the 2026 acad
 ```bash
 pip install pygame pyserial
 ```
-3. Run `main.py` from VSCode (not yet complete)
+3. Set `SERIAL_PORT` in `pi_side/config.py`, then run `pi_side/main.py` from VSCode
 
 ## On Raspberry Pi
 **Do NOT run VSCode on the pi. It's far too slow and will probably crash**
@@ -20,7 +20,7 @@ pip install pygame pyserial
 ```bash
 cd ~ && sudo apt install python3-full python3-pygame python3-pyserial
 ```
-2. In terminal inside this folder: (not yet complete)
+2. Set `SERIAL_PORT = "/dev/rfcomm0"` in `pi_side/config.py`, then in terminal inside `pi_side`:
 ```bash
 python main.py
 ```
