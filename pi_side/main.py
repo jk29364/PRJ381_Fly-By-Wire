@@ -89,12 +89,12 @@ class FlightController:
         # Same order as config.SERVO_NAMES / the Arduino's servoPins[] = {4, 6, 7, 8, 9, 11, 12}
         self.servo_angles = [clamp_angle(a) for a in (
             axis_to_angle(yaw),        # D4  rudder
-            axis_to_angle(-pitch),     # D6  tail right (mirrored)
-            axis_to_angle(pitch),      # D7  tail left
+            axis_to_angle(pitch),     # D6  tail right (mirrored)
+            axis_to_angle(-pitch),      # D7  tail left
             aileron_r,                 # D8  right wing inner (buttons)
-            axis_to_angle(-roll),      # D9  right wing outer (mirrored)
+            axis_to_angle(roll),      # D9  right wing outer (mirrored)
             aileron_l,                 # D11 left wing inner (buttons)
-            axis_to_angle(roll),       # D12 left wing outer
+            axis_to_angle(-roll),       # D12 left wing outer
         )]
         self.link.set_servo_angles(self.servo_angles)
 

@@ -4,7 +4,7 @@
 
 # ============================== SERIAL LINK ==============================
 # For laptop testing (USB connection)
-SERIAL_PORT = "COM6"
+SERIAL_PORT = "COM8"
 
 # For Raspberry Pi Bluetooth (uncomment when moving to the Pi)
 # SERIAL_PORT = "/dev/rfcomm0"
